@@ -35,7 +35,7 @@ async function initializeDatabase() {
         console.log('Using:', maskedURI);
         
         client = new MongoClient(MONGODB_URI, {
-            serverSelectionTimeoutMS: 30000, // Increased to 30 seconds
+            serverSelectionTimeoutMS: 30000,
             connectTimeoutMS: 30000,
             socketTimeoutMS: 45000,
             maxPoolSize: 10,
@@ -52,6 +52,9 @@ async function initializeDatabase() {
         
         db = client.db('askoromia');
         console.log('✅ Using database: askoromia');
+        
+        // Setup database indexes
+        await setupDatabase();
         
         return true;
         
@@ -72,6 +75,53 @@ async function initializeDatabase() {
         return false;
     }
 }
+
+// Database setup function
+async function setupDatabase() {
+    try {
+        console.log('🔧 Setting up database indexes...');
+        
+        // Safe index creation
+        const collections = {
+            users: [{ key: { user_id: 1 }, options: { unique: true, name: "user_id_unique" } }],
+            questions: [
+                { key: { approved: 1 }, options: { name: "approved_status" } },
+                { key: { user_id: 1 }, options: { name: "question_user_id" } }
+            ],
+            answers: [
+                { key: { question_id: 1 }, options: { name: "answer_question_id" } },
+                { key: { user_id: 1 }, options: { name: "answer_user_id" } }
+            ],
+            sessions: [{ key: { user_id: 1 }, options: { unique: true, name: "session_user_unique" } }],
+            subscriptions: [{ key: { user_id: 1, question_id: 1 }, options: { unique: true, name: "subscription_unique" } }],
+            votes: [{ key: { user_id: 1, answer_id: 1 }, options: { unique: true, name: "vote_unique" } }],
+            notifications: [
+                { key: { user_id: 1 }, options: { name: "notification_user_id" } },
+                { key: { created_at: -1 }, options: { name: "notification_created_at" } }
+            ]
+        };
+
+        for (const [collectionName, indexes] of Object.entries(collections)) {
+            for (const index of indexes) {
+                try {
+                    await db.collection(collectionName).createIndex(index.key, index.options);
+                    console.log(`✅ ${collectionName} index created`);
+                } catch (e) {
+                    if (e.code === 85) { // Index already exists
+                        console.log(`ℹ️ ${collectionName} index already exists`);
+                    } else {
+                        console.log(`⚠️ ${collectionName} index error:`, e.message);
+                    }
+                }
+            }
+        }
+        
+        console.log('✅ Database setup complete');
+    } catch (error) {
+        console.log('⚠️ Database setup warnings:', error.message);
+    }
+}
+
 // Database helper functions
 const dbHelpers = {
   async getUser(userId) {
